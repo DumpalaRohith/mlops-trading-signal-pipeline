@@ -1,82 +1,100 @@
 # MLOps Trading Signal Pipeline
 
-A minimal, production-style MLOps batch pipeline for processing financial time-series data and generating trading signals.
+> A production-grade batch pipeline for financial time-series processing and automated signal generation — built with reproducibility, observability, and deployment readiness at its core.
 
----
+## What It Does
 
-## Overview
+This pipeline ingests raw OHLCV financial data and transforms it into actionable trading signals using a rolling mean strategy:
 
-Given OHLCV financial data, this pipeline:
-
-1. Computes a **rolling mean** on closing prices
-2. Generates a **binary trading signal** — `1` if price is above the rolling mean (buy), `0` otherwise
-3. Outputs structured metrics and logs for monitoring
-
-**Core MLOps principles applied:**
-- **Reproducibility** — configuration-driven with fixed seed control
-- **Observability** — structured metrics and detailed logs
-- **Deployment readiness** — fully Dockerized
-
----
+- Computes a **configurable rolling mean** over closing prices
+- Emits a **binary signal** — `1` (buy) when price exceeds the mean, `0` otherwise
+- Produces **structured JSON metrics** and detailed logs on every run
 
 ## Dataset
 
-The pipeline expects time-series financial data with the following columns:
+The pipeline expects a CSV with standard OHLCV columns. Only `close` is consumed — it represents the final market price for each time step.
+```
+timestamp | open | high | low | close | volume
+```
 
-| Column | Description |
+## Core Principles
+
+| Principle | Implementation |
 |---|---|
-| `timestamp` | Time of record |
-| `open`, `high`, `low`, `close` | Price information |
-| `volume` | Trading activity |
+| **Reproducibility** | Config-driven execution with fixed random seed |
+| **Observability** | Structured metrics + timestamped run logs |
+| **Reliability** | Metrics emitted on both success *and* failure |
+| **Portability** | Fully containerized via Docker |
 
-> Only the `close` price is used — it represents the final market value for each time step.
+## Pipeline Architecture
+```
+config.yaml ──► [1] Load & Validate Config
+                        │
+data.csv ───────► [2] Ingest & Validate Data
+                        │
+                [3] Feature Engineering
+                   rolling_mean(close, window)
+                        │
+                [4] Signal Generation
+                   signal = 1 if close > rolling_mean
+                        │
+                [5] Compute Metrics + Write Logs
+                        │
+                metrics.json + run.log
+```
 
----
+### Stage Breakdown
 
-## Pipeline Workflow
+**1 · Configuration** — Reads `config.yaml`, validates required fields (`seed`, `window`, `version`), and sets the random seed for deterministic execution.
 
-### 1. Configuration Loading
-- Reads parameters from `config.yaml`
-- Validates required fields: `seed`, `window`, `version`
-- Ensures deterministic execution via fixed seed
+**2 · Ingestion & Validation** — Parses CSV with malformed-file tolerance, normalizes column names, validates the `close` column, and safely coerces values to numeric.
 
-### 2. Data Ingestion & Validation
-- Reads input CSV with robust malformed-file handling
-- Normalizes column names
-- Validates presence of `close` column
-- Safely converts values to numeric
+**3 · Feature Engineering** — Computes a rolling mean over a configurable window. Initial NaN rows from the warm-up period are cleanly handled.
 
-### 3. Feature Engineering
-- Computes rolling mean over a configurable window
-- Handles initial NaN values from rolling computation
-
-### 4. Signal Generation
+**4 · Signal Generation** — Applies the core rule per row:
 ```python
 signal = 1 if close > rolling_mean else 0
 ```
 
-### 5. Metrics Computation
+**5 · Metrics & Logging** — Aggregates runtime statistics and writes to `metrics.json`. Full execution trace written to `run.log`.
+
+## Quickstart
+
+**Run locally:**
+```bash
+pip install -r requirements.txt
+python run.py \
+  --input data.csv \
+  --config config.yaml \
+  --output metrics.json \
+  --log-file run.log
+```
+
+**Run with Docker:**
+```bash
+docker build -t mlops-task .
+docker run --rm mlops-task
+```
+
+## Metrics Reference
 
 | Metric | Description |
 |---|---|
-| `rows_processed` | Valid rows after rolling computation |
-| `signal_rate` | Proportion of positive signals |
-| `buy_signals` / `no_buy_signals` | Signal distribution |
-| `missing_close_values` | Data quality indicator |
-| `close_min` / `close_max` / `close_std` | Statistical summary of input |
-| `latency_ms` | Total execution time |
+| `rows_processed` | Valid rows after rolling window warm-up |
+| `signal_rate` | Fraction of rows with a positive (buy) signal |
+| `buy_signals` | Count of rows where `signal = 1` |
+| `no_buy_signals` | Count of rows where `signal = 0` |
+| `missing_close_values` | Null/unparseable close prices — data quality indicator |
+| `close_min / max / std` | Statistical summary of the input price series |
+| `latency_ms` | End-to-end wall-clock execution time |
 
-### 6. Logging
-Writes detailed logs to `run.log`, including job timestamps, config details, data loading status, processing steps, metrics summary, and any errors.
+## Output Schema
 
----
-
-## Output
-
-### Success — `metrics.json`
+### Success
 ```json
 {
   "version": "v1",
+  "status": "success",
   "rows_processed": 9996,
   "metric": "signal_rate",
   "value": 0.4991,
@@ -87,12 +105,11 @@ Writes detailed logs to `run.log`, including job timestamps, config details, dat
   "close_max": 50949.16,
   "close_std": 2410.69,
   "latency_ms": 66,
-  "seed": 42,
-  "status": "success"
+  "seed": 42
 }
 ```
 
-### Failure — `metrics.json`
+### Failure
 ```json
 {
   "version": "v1",
@@ -101,40 +118,30 @@ Writes detailed logs to `run.log`, including job timestamps, config details, dat
 }
 ```
 
-> Metrics are always generated — in both success and failure scenarios.
-
----
-
-## Running the Project
-
-### Local
-```bash
-pip install -r requirements.txt
-python run.py --input data.csv --config config.yaml --output metrics.json --log-file run.log
-```
-
-### Docker
-```bash
-docker build -t mlops-task .
-docker run --rm mlops-task
-```
-
----
-
 ## Design Decisions
 
-- **Deterministic runs** — fixed random seed ensures reproducibility
-- **Robust CSV handling** — pipeline recovers gracefully from malformed inputs
-- **Separation of concerns** — config, ingestion, processing, and metrics are fully decoupled
-- **Fail-safe design** — metrics are emitted even on pipeline failure
-- **Structured outputs** — JSON metrics are ready for downstream consumption
+**Fail-safe metrics** — `metrics.json` is always written, even when the pipeline errors. Downstream monitors never face a missing file.
 
----
+**Strict config validation** — Required fields are checked at startup. Misconfigured runs fail fast with clear messages rather than silently producing bad output.
+
+**Separation of concerns** — Config loading, ingestion, feature engineering, signal generation, and metrics are fully decoupled modules. Each is independently testable.
+
+**Robust CSV parsing** — Malformed rows are handled gracefully. Column names are normalized to prevent casing mismatches.
+
+**Deterministic execution** — A fixed seed guarantees identical outputs across runs given the same inputs and config — essential for debugging and auditing.
 
 ## Enhancements Beyond Requirements
 
-- Signal distribution metrics (`buy` vs `no-buy` counts)
-- Data quality tracking (`missing_close_values`)
-- Statistical summary of input data (`min`, `max`, `std`)
-- Strict configuration validation with clear error messages
-- Enhanced structured logging for full observability
+- Signal distribution breakdown (`buy_signals` vs `no_buy_signals`)
+- Input data quality tracking via `missing_close_values`
+- Full statistical summary of the price series (`min`, `max`, `std`)
+- Strict config validation with actionable error messages
+- Structured logging with job start/end timestamps for full traceability
+
+## Conclusion
+
+This project demonstrates that even a focused, single-signal pipeline can be engineered to production standards. By embedding MLOps best practices — deterministic execution, structured observability, fail-safe outputs, and containerized deployment — from the ground up, the system is not just functional but genuinely operatable.
+
+The architecture is intentionally lean yet extensible. The same scaffold that powers this rolling mean strategy can accommodate more complex models, additional signal types, or real-time streaming with minimal structural change. Every design choice — from config validation to error-time metrics — reflects the reality that **pipelines fail in production, and the ones that survive are the ones built to handle it gracefully**.
+
+This is what separates a script from a system.

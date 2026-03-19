@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "rows_processed": 9996,
+  "metric": "signal_rate",
+  "value": 0.4991,
+  "buy_signals": 4989,
+  "no_buy_signals": 5007,
+  "missing_close_values": 0,
+  "close_min": 41939.28,
+  "close_max": 50949.16,
+  "close_std": 2410.69,
+  "latency_ms": 66,
+  "seed": 42,
+  "status": "success"
+}

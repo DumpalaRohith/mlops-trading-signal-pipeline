@@ -1,0 +1,7 @@
+2026-03-19 21:44:46,712 - INFO - Job started
+2026-03-19 21:44:46,712 - INFO - Config loaded: {'seed': 42, 'window': 5, 'version': 'v1'}
+2026-03-19 21:44:46,749 - INFO - Rows loaded: 10000
+2026-03-19 21:44:46,753 - INFO - Data quality and stats computed
+2026-03-19 21:44:46,779 - INFO - Signals computed
+2026-03-19 21:44:46,779 - INFO - Metrics: {'version': 'v1', 'rows_processed': 9996, 'metric': 'signal_rate', 'value': 0.4991, 'buy_signals': 4989, 'no_buy_signals': 5007, 'missing_close_values': 0, 'close_min': 41939.28, 'close_max': 50949.16, 'close_std': 2410.69, 'latency_ms': 66, 'seed': 42, 'status': 'success'}
+2026-03-19 21:44:46,779 - INFO - Job completed successfully
